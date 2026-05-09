@@ -78,7 +78,7 @@ sector-flow/
 │   │   ├── database.py
 │   │   └── main.py
 │   ├── alembic/          # 数据库迁移
-│   ├── scripts/          # 工具脚本（seed_mock_data.py）
+│   ├── scripts/          # 工具脚本
 │   └── pyproject.toml    # uv 项目配置
 └── frontend/
     ├── app/              # Next.js App Router
@@ -104,7 +104,7 @@ sector-flow/
 
 | 变量 | 默认值 | 说明 |
 |---|---|---|
-| `DATABASE_URL` | `sqlite:///./sector_flow.db` | 数据库连接串（Docker 中使用 PostgreSQL 连接） |
+| `DATABASE_URL` | `postgresql+psycopg://sector_flow:sector_flow@localhost:5432/sector_flow` | PostgreSQL/TimescaleDB 连接串 |
 | `COLLECTOR_ENABLED` | `true` | 是否启动采集 Worker |
 | `SECTOR_TYPES` | `industry,concept` | 采集板块类型 |
 | `AKSHARE_REQUEST_DELAY` | `2` | 两次请求间隔（秒） |
