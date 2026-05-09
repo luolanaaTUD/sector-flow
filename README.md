@@ -37,6 +37,12 @@ docker compose down -v
 
 ## 本地开发（不使用 Docker）
 
+本地模式同样依赖 PostgreSQL/TimescaleDB（不再支持 SQLite）。可以仅启动数据库容器：
+
+```bash
+docker compose up -d db
+```
+
 ### 1. 后端
 
 ```bash
@@ -47,6 +53,8 @@ uv sync
 
 # 复制环境变量
 cp .env.example .env
+
+# 如数据库在本机 Docker 暴露的默认端口，保持 .env 默认 DATABASE_URL 即可
 
 # 启动 API 服务
 uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
