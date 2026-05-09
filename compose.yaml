@@ -1,0 +1,51 @@
+services:
+  db:
+    image: timescale/timescaledb:2.17.2-pg16
+    container_name: sector-flow-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sector_flow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sector_flow}
+      POSTGRES_DB: ${POSTGRES_DB:-sector_flow}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - timescale_data:/var/lib/postgresql/data
+      - ./docker/db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sector_flow} -d ${POSTGRES_DB:-sector_flow}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  backend:
+    platform: linux/amd64
+    build:
+      context: ./backend
+    container_name: sector-flow-backend
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://sector_flow:sector_flow@db:5432/sector_flow}
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8000
+      COLLECTOR_ENABLED: ${COLLECTOR_ENABLED:-true}
+      SECTOR_TYPES: ${SECTOR_TYPES:-industry,concept}
+      AKSHARE_REQUEST_DELAY: ${AKSHARE_REQUEST_DELAY:-2}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    container_name: sector-flow-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  timescale_data:
