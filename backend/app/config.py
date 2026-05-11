@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     COLLECTOR_ENABLED: bool = True
     SECTOR_TYPES: str = "industry,concept"
     AKSHARE_REQUEST_DELAY: float = 2.0
+    CONCEPT_ALLOWLIST_ENABLED: bool = True
+    CONCEPT_ALLOWLIST_FILE: str = "backend/app/collector/data/concept_allowlist.txt"
 
     @property
     def sector_type_list(self) -> list[str]:

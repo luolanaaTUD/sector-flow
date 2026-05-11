@@ -7,6 +7,8 @@
 #   cp compose.override.example.yaml compose.override.yaml
 #   # edit compose.override.yaml — it is gitignored
 #
+# On a production CVM you can use the same mechanism — see DEPLOY_TENCENT_CLOUD.md (Optional sections).
+#
 # Example overrides (uncomment in compose.override.yaml):
 #   backend:
 #     environment:

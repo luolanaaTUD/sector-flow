@@ -1,11 +1,12 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import SectorSelector from "@/components/SectorSelector";
 import RankingPanel from "@/components/RankingPanel";
 import TopBar from "@/components/TopBar";
 import { useFundFlowIntraday, useRanking, useSectors } from "@/hooks/useFundFlow";
+import { DEFAULT_SECTOR_NAMES } from "@/lib/defaultSectors";
 
 // ECharts is heavy – load on client only
 const FundFlowChart = dynamic(() => import("@/components/FundFlowChart"), {
@@ -61,11 +62,28 @@ function isMarketOpen(): boolean {
 export default function DashboardPage() {
   const [tradeDate, setTradeDate] = useState(todayStr);
   const [selectedSectors, setSelectedSectors] = useState<string[]>([]);
+  const hasAppliedDefaults = useRef(false);
 
   const { data: sectors, isLoading: sectorsLoading } = useSectors();
   const { data: intradayData, isLoading: intradayLoading, isValidating } =
     useFundFlowIntraday(tradeDate, selectedSectors);
   const { data: rankingData, isLoading: rankingLoading } = useRanking(10);
+
+  useEffect(() => {
+    if (hasAppliedDefaults.current || !sectors || sectors.length === 0) {
+      return;
+    }
+    setSelectedSectors((prev) => {
+      if (prev.length > 0) {
+        hasAppliedDefaults.current = true;
+        return prev;
+      }
+      const available = new Set(sectors.map((s) => s.name));
+      const defaults = DEFAULT_SECTOR_NAMES.filter((name) => available.has(name)).slice(0, 20);
+      hasAppliedDefaults.current = true;
+      return defaults;
+    });
+  }, [sectors]);
 
   const toggleSector = useCallback((name: string) => {
     setSelectedSectors((prev) =>

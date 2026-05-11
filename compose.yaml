@@ -1,6 +1,6 @@
 # Local / default stack: `docker compose up --build`
-# Tencent (TCR images): `docker compose -f compose.yaml -f compose.tencent.yaml up -d`
-# Optional local overrides: copy compose.override.example.yaml → compose.override.yaml
+# Tencent CVM: configure registry mirror in /etc/docker/daemon.json, then same command.
+# Optional overrides: copy compose.override.example.yaml → compose.override.yaml
 
 services:
   db:

@@ -1,305 +1,127 @@
-# Deploy Sector Flow on Tencent Cloud
+# Deploy Sector Flow on Tencent Cloud CVM
 
-This guide documents how to deploy this project on Tencent Cloud CVM using Docker Compose, with Tencent Docker mirrors enabled.
+Docker Compose deployment. Use an **x86_64** CVM (backend image is `linux/amd64`). Rough sizing: **2 vCPU / 4 GB RAM**, **≥50 GB** disk, **≥5 Mbps** egress if you pull images frequently. Configure a **Docker Hub mirror** on the server (`mirror.ccs.tencentyun.com`) so `docker compose build` pulls base images faster—no extra Compose file required for that.
 
-## 1) Recommended CVM spec
+## Security group
 
-- CPU/RAM: `2C4G` (minimum workable for app + TimescaleDB in one host)
-- Disk: `>= 50GB`
-- OS: `TencentOS` / `OpenCloudOS` / `Ubuntu` (64-bit x86)
-- Public bandwidth: `>= 5Mbps` recommended
+Inbound: `22`, `80`, `443`; optionally `3000` / `8000` for debugging. Do **not** expose `5432` to the internet.
 
-> Note: this repo pins backend container platform to `linux/amd64`, so choose an x86_64 CVM.
+## Install Docker + Compose
 
-## Quick path (TencentOS 4)
-
-If your CVM uses TencentOS Server 4, run this first:
+**TencentOS / OpenCloudOS** (typical on Tencent Cloud):
 
 ```bash
 sudo dnf update -y
 sudo rm -f /etc/yum.repos.d/docker-ce.repo
-sudo dnf clean all
-sudo dnf makecache
-sudo dnf install -y docker docker-compose-plugin git
+sudo dnf clean all && sudo dnf makecache
+sudo dnf install -y docker docker-compose-plugin git || sudo dnf install -y docker docker-compose git
 sudo systemctl enable --now docker
-docker version
 docker compose version
 ```
 
-If `docker-compose-plugin` is not found:
-
-```bash
-sudo dnf install -y docker-compose git
-docker-compose version || docker compose version
-```
-
-## 2) Security group
-
-Open inbound ports:
-
-- `22` (SSH)
-- `80` (HTTP)
-- `443` (HTTPS, if enabled)
-- Optional for direct debugging:
-  - `3000` (frontend)
-  - `8000` (backend)
-
-Do NOT expose `5432` publicly.
-
-## 3) Connect to server
-
-```bash
-ssh root@<CVM_PUBLIC_IP>
-```
-
-## 4) Install Docker + Compose plugin
-
-### TencentOS / OpenCloudOS (recommended)
-
-Use TencentOS native repos first (more stable in mainland network):
-
-```bash
-# IMPORTANT: type normal ASCII parentheses, e.g. dnf update -y
-sudo dnf update -y
-
-# If you previously added docker-ce repo and hit errors, remove it first
-sudo rm -f /etc/yum.repos.d/docker-ce.repo
-sudo dnf clean all
-sudo dnf makecache
-
-# Install Docker from TencentOS repos
-sudo dnf install -y docker docker-compose-plugin
-
-sudo systemctl enable --now docker
-docker version
-docker compose version
-```
-
-If `docker-compose-plugin` is unavailable in your image, install `docker-compose`:
-
-```bash
-sudo dnf install -y docker-compose
-docker-compose version || docker compose version
-```
-
-Official fallback (when native `docker` package is unavailable or too old):
+If the stock package is missing or too old, use Tencent’s Docker CE mirror:
 
 ```bash
 sudo dnf install -y dnf-plugins-core
 sudo dnf config-manager --add-repo=https://mirrors.cloud.tencent.com/docker-ce/linux/centos/docker-ce.repo
 sudo dnf install -y docker-ce --nobest
 sudo systemctl enable --now docker
-docker version
+docker compose version || docker-compose version
 ```
 
-For Ubuntu (Tencent mirror):
+**Ubuntu** (Docker CE from Tencent mirror):
 
 ```bash
-sudo apt-get update
-sudo apt-get install -y ca-certificates curl gnupg
+sudo apt-get update && sudo apt-get install -y ca-certificates curl gnupg
 sudo install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://mirrors.cloud.tencent.com/docker-ce/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
 sudo chmod a+r /etc/apt/keyrings/docker.gpg
-echo \
-  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://mirrors.cloud.tencent.com/docker-ce/linux/ubuntu \
-  $(. /etc/os-release && echo $VERSION_CODENAME) stable" | \
-  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-sudo apt-get update
-sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://mirrors.cloud.tencent.com/docker-ce/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt-get update && sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 sudo systemctl enable --now docker
 ```
 
-### Troubleshooting TencentOS install errors
+If install fails with `download.docker.com` / `404` on TencentOS 4, remove `/etc/yum.repos.d/docker-ce.repo` and use the native `dnf install docker` flow above or the Tencent CE repo fallback.
 
-If you saw errors like:
-
-- `https://download.docker.com/linux/rhel/4/...`
-- `404 repomd.xml`
-- `SSL connect error`
-
-Root cause is usually an incompatible/blocked `docker-ce` repo for TencentOS `releasever=4`.
-Use either:
-
-- TencentOS native installation commands above, and remove `/etc/yum.repos.d/docker-ce.repo`, or
-- Tencent mirror Docker CE repo (`mirrors.cloud.tencent.com`) with `docker-ce --nobest`.
-
-## 5) Configure Docker registry mirrors (optional, mainland network)
-
-Public mirror endpoints change over time; treat them as **acceleration only**, not a guaranteed source of truth.
-
-- On Tencent Cloud CVM, `mirror.ccs.tencentyun.com` is commonly used; if pulls still time out, add other mirrors your org trusts or use **Alibaba Cloud ACR “镜像加速器”** (per-account URL in console).
-- For **production consistency**, build once (CI or build machine), push **`backend` / `frontend` (and optionally Timescale)** to **Tencent TCR**, then deploy only from TCR using [`compose.tencent.yaml`](compose.tencent.yaml) (see step 8b).
-
-Create or edit `/etc/docker/daemon.json` (example — adjust mirrors to what works today):
+## Registry mirror (recommended)
 
 ```bash
 sudo mkdir -p /etc/docker
-sudo tee /etc/docker/daemon.json >/dev/null <<'EOF'
+sudo tee /etc/docker/daemon.json <<-'EOF'
 {
   "registry-mirrors": [
     "https://mirror.ccs.tencentyun.com"
   ]
 }
 EOF
+sudo systemctl daemon-reload && sudo systemctl restart docker
+docker info  # confirm Registry Mirrors
 ```
 
-Restart Docker:
+## Deploy
 
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl restart docker
-docker info | rg -n "Registry Mirrors" || docker info
-```
-
-## 6) Get project code
-
-```bash
-sudo dnf install -y git || sudo apt-get install -y git
+ssh root@<CVM_PUBLIC_IP>
 cd /opt
-git clone <YOUR_REPO_URL> sector-flow
-cd sector-flow
-```
-
-### If `git clone` / `curl https://github.com` times out (port 443)
-
-Many mainland CVMs cannot reach **GitHub over HTTPS** reliably (symptom: `Failed to connect to github.com port 443` / `curl: (28) ... Timeout`). This is a **network path** issue, not your repo.
-
-**Quick checks**
-
-1. Outbound is allowed: Tencent Cloud **security group** should allow egress (default usually allows all outbound). If you locked egress, open **TCP 443** outbound.
-2. Confirm failure mode:
-
-```bash
-curl -I --connect-timeout 10 https://github.com || true
-getent hosts github.com || true
-```
-
-**Reliable workarounds (pick one)**
-
-| Approach | When to use |
-|---|---|
-| **A. Mirror on Gitee / Tencent Git / CODING** | You control the repo; mirror once, then `git clone` from the domestic host on the CVM. |
-| **B. `rsync` / `scp` from your laptop** | You already have the code locally; copy `/opt/sector-flow` to the server (no GitHub on CVM). |
-| **C. Upload a tarball to COS + download on CVM** | No Git; `wget`/`curl` from Tencent COS bucket URL. |
-| **D. CI builds images → CVM only pulls TCR** | CVM never needs GitHub; GitHub Actions (or local) builds and pushes to TCR, CVM uses [`compose.tencent.yaml`](compose.tencent.yaml). |
-
-**Gitee mirror (example flow)**
-
-1. On [gitee.com](https://gitee.com), import `https://github.com/<user>/<repo>`.
-2. On CVM:
-
-```bash
-cd /opt
-git clone https://gitee.com/<your>/<repo>.git sector-flow
-cd sector-flow
-```
-
-**Third-party GitHub proxies** exist but change often and may be unsafe for production; prefer A–D above.
-
-## 7) Configure environment
-
-```bash
+git clone <YOUR_REPO_URL> sector-flow && cd sector-flow   # if GitHub is blocked, use Gitee mirror / scp / tarball — see README
 cp .env.example .env
-```
-
-Default root `.env` already fits compose startup. Adjust only if needed (passwords, ports, etc.).
-
-For **production from TCR**, add to `.env` on the server (see root `.env.example`):
-
-- `BACKEND_IMAGE` — e.g. `ccr.ccs.tencentyun.com/<namespace>/sector-flow-backend:<tag>`
-- `FRONTEND_IMAGE` — e.g. `ccr.ccs.tencentyun.com/<namespace>/sector-flow-frontend:<tag>`
-- Optional: `TIMESCALE_IMAGE` if you mirrored TimescaleDB to TCR (avoids Docker Hub on the CVM).
-
-## 8) Build and start
-
-### 8a) Build on the CVM (simplest; pulls base images from Hub/mirrors)
-
-Uses only [`compose.yaml`](compose.yaml) (database port published for local `psql` from host; still keep security group closed on `5432`).
-
-```bash
+# Set NEXT_PUBLIC_API_URL to your public API URL if needed (e.g. http://<IP>:8000)
 docker compose up -d --build
 docker compose ps
 ```
 
-### 8b) Production-style: pre-built images from TCR (recommended)
+**Logs:** `docker compose logs -f backend`
 
-Build and push images from a machine with reliable registry access (CI, office, etc.), then on the CVM:
-
-```bash
-docker compose -f compose.yaml -f compose.tencent.yaml pull
-docker compose -f compose.yaml -f compose.tencent.yaml up -d
-docker compose -f compose.yaml -f compose.tencent.yaml ps
-```
-
-`compose.tencent.yaml` clears published `db` ports and uses `BACKEND_IMAGE` / `FRONTEND_IMAGE` instead of `build:`.
-
-**Build hints (before `docker push` to TCR):**
-
-- Backend: `docker build --platform linux/amd64 -t $BACKEND_IMAGE ./backend`
-- Frontend: bake public API URL —  
-  `docker build --platform linux/amd64 -f frontend/Dockerfile --build-arg NEXT_PUBLIC_API_URL=http://<CVM_PUBLIC_IP>:8000 -t $FRONTEND_IMAGE ./frontend`  
-  (replace with your domain + TLS when fronted by Nginx.)
-
-View logs:
-
-```bash
-docker compose logs -f backend
-docker compose logs -f db
-```
-
-## 9) Verify service
-
-- Frontend: `http://<CVM_PUBLIC_IP>:3000`
-- Backend docs: `http://<CVM_PUBLIC_IP>:8000/docs`
-- Health: `http://<CVM_PUBLIC_IP>:8000/health`
-
-Verify TimescaleDB extension:
+**Verify:** `http://<CVM_PUBLIC_IP>:3000`, `http://<CVM_PUBLIC_IP>:8000/docs`, `http://<CVM_PUBLIC_IP>:8000/health`
 
 ```bash
 docker compose exec db psql -U sector_flow -d sector_flow -c "\dx"
 ```
 
-## 10) Common operations
-
-Restart:
+## Common commands
 
 ```bash
 docker compose restart
+git pull && docker compose up -d --build
+docker compose down -v && docker compose up -d --build   # resets DB volume — destructive
 ```
 
-Pull latest code and redeploy:
+## Optional: hide Postgres on the host
 
-```bash
-git pull
-docker compose up -d --build
+Create `compose.override.yaml` (gitignored) beside `compose.yaml`:
+
+```yaml
+services:
+  db:
+    ports: !reset []
 ```
 
-If you use the TCR overlay (step 8b), rebuild/push images elsewhere, then on the CVM:
+Then `docker compose up -d --build` picks it up automatically.
 
-```bash
-git pull
-docker compose -f compose.yaml -f compose.tencent.yaml pull
-docker compose -f compose.yaml -f compose.tencent.yaml up -d
+## Production notes
+
+Put Nginx/Caddy in front; expose only `80`/`443`; keep DB private; TLS when you have a domain; back up the DB (`pg_dump` or snapshots).
+
+## Optional: pre-built images (CI)
+
+Requires Compose **v2.24+**. In `.env`: `BACKEND_IMAGE`, `FRONTEND_IMAGE`, optional `TIMESCALE_IMAGE`. Add `compose.override.yaml`:
+
+```yaml
+services:
+  db:
+    image: ${TIMESCALE_IMAGE:-timescale/timescaledb:2.17.2-pg16}
+    ports: !reset []
+  backend:
+    image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE in .env}
+    build: !reset null
+    platform: linux/amd64
+  frontend:
+    image: ${FRONTEND_IMAGE:?Set FRONTEND_IMAGE in .env}
+    build: !reset null
 ```
 
-Reset all data (destructive):
+On the build machine, then on CVM: `docker compose pull && docker compose up -d`.
 
-```bash
-docker compose down -v
-docker compose up -d --build
-```
-
-With TCR overlay:
-
-```bash
-docker compose -f compose.yaml -f compose.tencent.yaml down -v
-docker compose -f compose.yaml -f compose.tencent.yaml up -d
-```
-
-## 11) Production hardening checklist
-
-- Put Nginx/Caddy in front of `frontend` and `backend`.
-- Expose only `80/443` publicly.
-- Keep `5432` private.
-- Enable TLS (Let's Encrypt) after domain + ICP requirements are satisfied.
-- Add periodic database backups (`pg_dump` or volume snapshots).
+Build examples:  
+`docker build --platform linux/amd64 -t $BACKEND_IMAGE ./backend`  
+`docker build --platform linux/amd64 -f frontend/Dockerfile --build-arg NEXT_PUBLIC_API_URL=http://<IP>:8000 -t $FRONTEND_IMAGE ./frontend`

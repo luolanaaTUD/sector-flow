@@ -25,32 +25,20 @@ docker compose up --build
 
 | 文件 | 用途 |
 |---|---|
-| [`compose.yaml`](compose.yaml) | 默认栈：本机 `build` + 暴露端口，适合本地与「在 CVM 上现编」 |
-| [`compose.tencent.yaml`](compose.tencent.yaml) | 腾讯云生产覆盖：使用 TCR 镜像、**不**对外映射数据库端口 |
-| [`compose.override.example.yaml`](compose.override.example.yaml) | 本地覆盖模板；复制为 `compose.override.yaml` 后由 Compose 自动合并 |
+| [`compose.yaml`](compose.yaml) | 默认栈：本机 `build` + 暴露端口；本地与 **腾讯云 CVM 现编** 都用这一份即可 |
+| [`compose.override.example.yaml`](compose.override.example.yaml) | 可选覆盖模板；复制为 `compose.override.yaml`（已 gitignore）后与 `compose.yaml` 自动合并 |
 
-**腾讯云（推荐生产）**：镜像推送到 [TCR](https://cloud.tencent.com/product/tcr) 后，在服务器 `.env` 中设置 `BACKEND_IMAGE`、`FRONTEND_IMAGE`（可选 `TIMESCALE_IMAGE`），然后：
+**腾讯云 CVM**：在服务器 `/etc/docker/daemon.json` 配置 **Docker Hub 镜像加速**（如 `https://mirror.ccs.tencentyun.com`）后，`docker compose build` / `pull` 会自动走加速，**不需要**单独的 Compose 覆盖文件。部署：`docker compose up -d --build`。详见 [`DEPLOY_TENCENT_CLOUD.md`](DEPLOY_TENCENT_CLOUD.md)。
 
-```bash
-docker compose -f compose.yaml -f compose.tencent.yaml up -d
-```
-
-前端镜像构建时需带上公网可访问的后端地址，例如：
-
-```bash
-docker build -f frontend/Dockerfile \
-  --build-arg NEXT_PUBLIC_API_URL=http://<CVM_PUBLIC_IP>:8000 \
-  -t <your-tcr>/sector-flow-frontend:<tag> \
-  ./frontend
-```
-
-详细步骤见 [`DEPLOY_TENCENT_CLOUD.md`](DEPLOY_TENCENT_CLOUD.md)。
+如需 **CI 预构建镜像**、或在生产环境 **取消映射数据库端口**，可在服务器自建 `compose.override.yaml`；示例见 [`DEPLOY_TENCENT_CLOUD.md`](DEPLOY_TENCENT_CLOUD.md) 文末 Optional 各节。
 
 - 前端看板：http://localhost:3000
 - 后端文档：http://localhost:8000/docs
 - 健康检查：http://localhost:8000/health
 - Docker 模式会自动执行 Alembic 迁移，并启用 TimescaleDB hypertable + compression policy。
 - 后端容器固定 `linux/amd64`，确保同花顺依赖的 `py-mini-racer` 轮子在 Docker 中可用。
+- 概念板块支持通过 allowlist 控制采集范围，避免默认抓取近 400 个概念板块。
+- 前端首次加载会自动预选一组重点行业/概念板块，直接展示图表。
 
 ### 初始化与重置
 
@@ -103,8 +91,7 @@ npm run dev
 
 ```
 sector-flow/
-├── compose.yaml              # 默认 Docker Compose
-├── compose.tencent.yaml      # 腾讯云 / TCR 生产覆盖
+├── compose.yaml              # 默认 Docker Compose（本地 / CVM 现编）
 ├── compose.override.example.yaml
 ├── backend/
 │   ├── app/
@@ -163,3 +150,5 @@ WHERE ts::time >= time '01:00:00'
 | `COLLECTOR_ENABLED` | `true` | 是否启动采集 Worker |
 | `SECTOR_TYPES` | `industry,concept` | 采集板块类型 |
 | `AKSHARE_REQUEST_DELAY` | `2` | 两次请求间隔（秒） |
+| `CONCEPT_ALLOWLIST_ENABLED` | `true` | 是否启用概念板块白名单过滤 |
+| `CONCEPT_ALLOWLIST_FILE` | `backend/app/collector/data/concept_allowlist.txt` | 概念白名单文件路径（一行一个概念名） |

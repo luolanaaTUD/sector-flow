@@ -12,10 +12,13 @@ from __future__ import annotations
 import logging
 import time
 from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import Optional
 from zoneinfo import ZoneInfo
 
 import pandas as pd
+
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +26,52 @@ _SHANGHAI = ZoneInfo("Asia/Shanghai")
 
 _COL_THS_NAME = "行业"
 _COL_THS_NET = "净额"
+
+
+def _load_concept_allowlist() -> set[str]:
+    """Load allowlist file with one concept name per line (# comments supported)."""
+    allowlist_path = Path(settings.CONCEPT_ALLOWLIST_FILE)
+    if not allowlist_path.is_absolute():
+        allowlist_path = Path.cwd() / allowlist_path
+    try:
+        raw = allowlist_path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        logger.warning(
+            "Concept allowlist file not found: %s; falling back to unfiltered concepts",
+            allowlist_path,
+        )
+        return set()
+    except OSError as exc:
+        logger.error("Failed to read concept allowlist (%s): %s", allowlist_path, exc)
+        return set()
+
+    items: set[str] = set()
+    for line in raw.splitlines():
+        s = line.strip()
+        if not s or s.startswith("#"):
+            continue
+        items.add(s)
+    return items
+
+
+def _filter_concept_rows(rows: list[dict]) -> list[dict]:
+    if not settings.CONCEPT_ALLOWLIST_ENABLED:
+        return rows
+    allowlist = _load_concept_allowlist()
+    if not allowlist:
+        logger.warning(
+            "Concept allowlist is enabled but empty/unavailable; keeping all concept sectors"
+        )
+        return rows
+    filtered = [row for row in rows if row.get("sector_name") in allowlist]
+    dropped = len(rows) - len(filtered)
+    logger.info(
+        "Concept allowlist active: kept %d, dropped %d (source %d)",
+        len(filtered),
+        dropped,
+        len(rows),
+    )
+    return filtered
 
 
 def _ths_net_to_yi(value) -> Optional[float]:
@@ -118,6 +167,8 @@ def fetch_snapshot(sector_type: str, delay: float = 2.0) -> list[dict]:
         raise ValueError(f"Unknown sector_type: {sector_type!r}. Use 'industry' or 'concept'.")
     try:
         rows = _fetch_ths_snapshot(sector_type)
+        if sector_type == "concept":
+            rows = _filter_concept_rows(rows)
         logger.info("Fetched %d %s sectors from THS (10jqka)", len(rows), sector_type)
         return rows
     except Exception as exc:
