@@ -36,7 +36,8 @@ function buildOption(data: IntradayResponse): EChartsOption {
         fontWeight: "bold",
         fontSize: 11,
       },
-      connectNulls: false,
+      // Bridge missing minutes (API nulls) so sparse sectors still read as one line.
+      connectNulls: true,
     };
   });
 
