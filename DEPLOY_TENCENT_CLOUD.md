@@ -160,6 +160,42 @@ git clone <YOUR_REPO_URL> sector-flow
 cd sector-flow
 ```
 
+### If `git clone` / `curl https://github.com` times out (port 443)
+
+Many mainland CVMs cannot reach **GitHub over HTTPS** reliably (symptom: `Failed to connect to github.com port 443` / `curl: (28) ... Timeout`). This is a **network path** issue, not your repo.
+
+**Quick checks**
+
+1. Outbound is allowed: Tencent Cloud **security group** should allow egress (default usually allows all outbound). If you locked egress, open **TCP 443** outbound.
+2. Confirm failure mode:
+
+```bash
+curl -I --connect-timeout 10 https://github.com || true
+getent hosts github.com || true
+```
+
+**Reliable workarounds (pick one)**
+
+| Approach | When to use |
+|---|---|
+| **A. Mirror on Gitee / Tencent Git / CODING** | You control the repo; mirror once, then `git clone` from the domestic host on the CVM. |
+| **B. `rsync` / `scp` from your laptop** | You already have the code locally; copy `/opt/sector-flow` to the server (no GitHub on CVM). |
+| **C. Upload a tarball to COS + download on CVM** | No Git; `wget`/`curl` from Tencent COS bucket URL. |
+| **D. CI builds images → CVM only pulls TCR** | CVM never needs GitHub; GitHub Actions (or local) builds and pushes to TCR, CVM uses [`compose.tencent.yaml`](compose.tencent.yaml). |
+
+**Gitee mirror (example flow)**
+
+1. On [gitee.com](https://gitee.com), import `https://github.com/<user>/<repo>`.
+2. On CVM:
+
+```bash
+cd /opt
+git clone https://gitee.com/<your>/<repo>.git sector-flow
+cd sector-flow
+```
+
+**Third-party GitHub proxies** exist but change often and may be unsafe for production; prefer A–D above.
+
 ## 7) Configure environment
 
 ```bash
