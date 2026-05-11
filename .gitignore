@@ -1,4 +1,5 @@
 .env
+compose.override.yaml
 .DS_Store
 **/.venv/
 **/__pycache__/

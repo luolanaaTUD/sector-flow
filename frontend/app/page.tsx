@@ -17,15 +17,41 @@ const FundFlowChart = dynamic(() => import("@/components/FundFlowChart"), {
   ),
 });
 
+const CHINA_TIME_ZONE = "Asia/Shanghai";
+
+function getChinaNowParts() {
+  const formatter = new Intl.DateTimeFormat("zh-CN", {
+    timeZone: CHINA_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+  const parts = formatter.formatToParts(new Date());
+  const value = (type: string) => parts.find((p) => p.type === type)?.value ?? "00";
+  return {
+    year: Number(value("year")),
+    month: Number(value("month")),
+    day: Number(value("day")),
+    hour: Number(value("hour")),
+    minute: Number(value("minute")),
+    second: Number(value("second")),
+  };
+}
+
 function todayStr(): string {
-  return new Date().toISOString().slice(0, 10);
+  const now = getChinaNowParts();
+  return `${now.year}-${String(now.month).padStart(2, "0")}-${String(now.day).padStart(2, "0")}`;
 }
 
 function isMarketOpen(): boolean {
-  const now = new Date();
-  const h = now.getHours();
-  const m = now.getMinutes();
-  const day = now.getDay();
+  const now = getChinaNowParts();
+  const h = now.hour;
+  const m = now.minute;
+  const day = new Date(`${todayStr()}T00:00:00+08:00`).getDay();
   if (day === 0 || day === 6) return false;
   const morning = (h === 9 && m >= 30) || h === 10 || (h === 11 && m <= 30);
   const afternoon = h === 13 || h === 14 || (h === 15 && m === 0);
@@ -55,7 +81,12 @@ export default function DashboardPage() {
 
   const lastUpdated = useMemo(() => {
     if (!intradayData) return undefined;
-    return new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" });
+    return new Intl.DateTimeFormat("zh-CN", {
+      timeZone: CHINA_TIME_ZONE,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).format(new Date());
   }, [intradayData]);
 
   return (

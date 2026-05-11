@@ -1,8 +1,14 @@
+# Local / default stack: `docker compose up --build`
+# Tencent (TCR images): `docker compose -f compose.yaml -f compose.tencent.yaml up -d`
+# Optional local overrides: copy compose.override.example.yaml → compose.override.yaml
+
 services:
   db:
     image: timescale/timescaledb:2.17.2-pg16
     container_name: sector-flow-db
     environment:
+      TZ: Asia/Shanghai
+      PGTZ: Asia/Shanghai
       POSTGRES_USER: ${POSTGRES_USER:-sector_flow}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sector_flow}
       POSTGRES_DB: ${POSTGRES_DB:-sector_flow}
@@ -24,6 +30,7 @@ services:
       context: ./backend
     container_name: sector-flow-backend
     environment:
+      TZ: Asia/Shanghai
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg://sector_flow:sector_flow@db:5432/sector_flow}
       APP_HOST: 0.0.0.0
       APP_PORT: 8000
@@ -42,6 +49,8 @@ services:
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
     container_name: sector-flow-frontend
+    environment:
+      TZ: Asia/Shanghai
     ports:
       - "3000:3000"
     depends_on:

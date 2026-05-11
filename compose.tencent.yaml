@@ -1,0 +1,28 @@
+# Tencent Cloud / production overlay (image-based deploy).
+#
+# Prerequisite: push images to Tencent Container Registry (TCR), then set
+# BACKEND_IMAGE and FRONTEND_IMAGE in `.env` on the server.
+#
+# Usage:
+#   docker compose -f compose.yaml -f compose.tencent.yaml up -d
+#
+# Build frontend with the correct API URL before pushing, e.g.:
+#   docker build -f frontend/Dockerfile --build-arg NEXT_PUBLIC_API_URL=https://api.example.com -t $FRONTEND_IMAGE ./frontend
+#
+# See README.md and DEPLOY_TENCENT_CLOUD.md for the full flow.
+
+services:
+  db:
+    # Optional: pull Timescale from your TCR mirror instead of Docker Hub.
+    image: ${TIMESCALE_IMAGE:-timescale/timescaledb:2.17.2-pg16}
+    # Do not publish PostgreSQL on the host (security group should not expose 5432).
+    ports: !reset []
+
+  backend:
+    image: ${BACKEND_IMAGE:?Set BACKEND_IMAGE in .env, e.g. ccr.ccs.tencentyun.com/<namespace>/sector-flow-backend:<tag>}
+    build: !reset null
+    platform: linux/amd64
+
+  frontend:
+    image: ${FRONTEND_IMAGE:?Set FRONTEND_IMAGE in .env, e.g. ccr.ccs.tencentyun.com/<namespace>/sector-flow-frontend:<tag>}
+    build: !reset null

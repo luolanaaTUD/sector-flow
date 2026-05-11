@@ -11,12 +11,15 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+_SHANGHAI = ZoneInfo("Asia/Shanghai")
 
 _COL_THS_NAME = "行业"
 _COL_THS_NET = "净额"
@@ -43,24 +46,32 @@ def _ths_net_to_yi(value) -> Optional[float]:
 
 def _infer_trade_date() -> date:
     """Best-effort session date (weekend → last weekday for A-share)."""
-    today = datetime.now()
+    today = datetime.now(_SHANGHAI)
     weekday = today.weekday()
     if weekday == 5:
-        return (today - pd.Timedelta(days=1)).date()
+        return (today - timedelta(days=1)).date()
     if weekday == 6:
-        return (today - pd.Timedelta(days=2)).date()
+        return (today - timedelta(days=2)).date()
     return today.date()
 
 
 def _snapshot_ts(trade_date: date) -> datetime:
-    """Snapshot timestamp: live clock in session, else EOD 15:00."""
-    now = datetime.now()
+    """Snapshot timestamp: live clock in session, else EOD 15:00 Asia/Shanghai."""
+    now = datetime.now(_SHANGHAI)
     h, m = now.hour, now.minute
     in_morning = (h == 9 and m >= 30) or (10 <= h <= 10) or (h == 11 and m <= 30)
     in_afternoon = (13 <= h <= 14) or (h == 15 and m == 0)
     if in_morning or in_afternoon:
         return now.replace(second=0, microsecond=0)
-    return datetime(trade_date.year, trade_date.month, trade_date.day, 15, 0, 0)
+    return datetime(
+        trade_date.year, trade_date.month, trade_date.day, 15, 0, 0, tzinfo=_SHANGHAI
+    )
+
+
+def _to_local_naive(dt: datetime) -> datetime:
+    """Persist Shanghai wall-clock minute in naive DB timestamp column."""
+    local = dt.astimezone(_SHANGHAI) if dt.tzinfo else dt
+    return local.replace(second=0, microsecond=0, tzinfo=None)
 
 
 def _normalize_ths_snapshot(df: pd.DataFrame, sector_type: str) -> list[dict]:
@@ -70,7 +81,7 @@ def _normalize_ths_snapshot(df: pd.DataFrame, sector_type: str) -> list[dict]:
         logger.error("THS snapshot missing columns: %s", list(df.columns))
         return []
     trade_date = _infer_trade_date()
-    ts = _snapshot_ts(trade_date)
+    ts = _to_local_naive(_snapshot_ts(trade_date))
     rows = []
     for _, row in df.iterrows():
         name = str(row.get(_COL_THS_NAME, "")).strip()

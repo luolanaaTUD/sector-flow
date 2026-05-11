@@ -1,0 +1,17 @@
+# Optional local-only overrides (Docker Desktop / dev machine).
+#
+# Docker Compose automatically merges, in order:
+#   compose.yaml  +  compose.override.yaml  (if present)
+#
+# Setup:
+#   cp compose.override.example.yaml compose.override.yaml
+#   # edit compose.override.yaml — it is gitignored
+#
+# Example overrides (uncomment in compose.override.yaml):
+#   backend:
+#     environment:
+#       COLLECTOR_ENABLED: "false"
+#
+# This file is safe to commit; `compose.override.yaml` is gitignored.
+
+services: {}

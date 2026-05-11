@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import time
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -20,12 +21,14 @@ from app.config import settings
 
 logger = logging.getLogger(__name__)
 
+_SHANGHAI = ZoneInfo("Asia/Shanghai")
+
 _scheduler: BackgroundScheduler | None = None
 
 
 def _is_trading_time() -> bool:
-    """Check if current CST time is within trading windows."""
-    now = datetime.now()  # expects server clock in CST (UTC+8)
+    """Check if current Asia/Shanghai wall time is within trading windows."""
+    now = datetime.now(_SHANGHAI)
     h, m = now.hour, now.minute
     morning = (h == 9 and m >= 30) or (h == 10) or (h == 11 and m <= 30)
     afternoon = (h == 13) or (h == 14) or (h == 15 and m == 0)

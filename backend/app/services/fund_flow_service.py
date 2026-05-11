@@ -2,14 +2,35 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.fund_flow import Sector, SectorFundFlowMinute
 from app.services.time_axis import trading_minutes
+
+_SHANGHAI = ZoneInfo("Asia/Shanghai")
+
+
+def _to_shanghai_slot(ts) -> str:
+    """Normalize DB timestamp to Shanghai wall-clock minute slot."""
+    if ts.tzinfo is not None:
+        ts = ts.astimezone(_SHANGHAI)
+    elif not _is_trading_time(ts.hour, ts.minute):
+        # Backward compatibility for previously persisted UTC-like naive rows.
+        shifted = ts + timedelta(hours=8)
+        if _is_trading_time(shifted.hour, shifted.minute):
+            ts = shifted
+    return ts.strftime("%H:%M:00")
+
+
+def _is_trading_time(hour: int, minute: int) -> bool:
+    morning = (hour == 9 and minute >= 30) or hour == 10 or (hour == 11 and minute <= 30)
+    afternoon = hour == 13 or hour == 14 or (hour == 15 and minute == 0)
+    return morning or afternoon
 
 
 def get_sectors(db: Session, sector_type: Optional[str] = None) -> list[dict]:
@@ -78,7 +99,7 @@ def get_intraday_series(
     # Build lookup: sector -> {time_slot: value}
     lookup: dict[str, dict[str, float | None]] = {s: {} for s in sectors}
     for row in rows:
-        slot = row.ts.strftime("%H:%M:00")
+        slot = _to_shanghai_slot(row.ts)
         lookup[row.name][slot] = row.net_inflow_yi
 
     series = []
