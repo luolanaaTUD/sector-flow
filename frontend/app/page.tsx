@@ -8,7 +8,7 @@ import TopBar from "@/components/TopBar";
 import { useFundFlowIntraday, useRanking, useSectors } from "@/hooks/useFundFlow";
 import { DEFAULT_SECTOR_NAMES } from "@/lib/defaultSectors";
 
-// ECharts is heavy – load on client only
+// TradingView Lightweight Charts — client-only (canvas)
 const FundFlowChart = dynamic(() => import("@/components/FundFlowChart"), {
   ssr: false,
   loading: () => (
@@ -130,7 +130,11 @@ export default function DashboardPage() {
 
         {/* Center: chart */}
         <main className="flex-1 overflow-hidden p-3">
-          <FundFlowChart data={intradayData} loading={intradayLoading} />
+          <FundFlowChart
+            data={intradayData}
+            loading={intradayLoading}
+            tradeDate={tradeDate}
+          />
         </main>
 
         {/* Right: ranking */}
